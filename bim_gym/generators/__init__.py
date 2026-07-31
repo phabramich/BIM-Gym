@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import random
 
+from bim_gym.generators.alignment_qa import generate_alignment_qa
 from bim_gym.generators.clearance import generate_clearance
 from bim_gym.generators.config import TaskGeneratorConfig
 from bim_gym.generators.enums import TaskFamilyKind
 from bim_gym.generators.hosting_qa import generate_hosting_qa
+from bim_gym.generators.opening_shift import generate_opening_shift
 from bim_gym.generators.spacing import generate_spacing
 from bim_gym.generators._util import allocate_counts
 from bim_gym.tasks.spec import TaskSpec
@@ -14,6 +16,8 @@ _FAMILY_GENERATORS = {
     TaskFamilyKind.HostingQA: generate_hosting_qa,
     TaskFamilyKind.Clearance: generate_clearance,
     TaskFamilyKind.Spacing: generate_spacing,
+    TaskFamilyKind.OpeningShift: generate_opening_shift,
+    TaskFamilyKind.AlignmentQA: generate_alignment_qa,
 }
 
 

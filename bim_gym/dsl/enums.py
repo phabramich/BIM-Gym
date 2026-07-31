@@ -31,3 +31,4 @@ class PredicateKind(str, Enum):
     Inside = "inside"
     AlignedWith = "aligned_with"
     DistanceInRange = "distance_in_range"
+    HostOffsetInRange = "host_offset_in_range"

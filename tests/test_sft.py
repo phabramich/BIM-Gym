@@ -18,6 +18,7 @@ from bim_gym.sft.export import export_jsonl, load_jsonl
 from bim_gym.sft.builder import _resolve_base_actions
 from bim_gym.tasks.runner import run_task
 from bim_gym.generators import TaskGeneratorConfig, generate
+from bim_gym.sft.context import CONTEXT_SCHEMA
 
 
 def _parse_assistant_content(content: str) -> dict:
@@ -67,22 +68,9 @@ def test_query_prefix_present_for_move_tasks() -> None:
         assert kinds[0] == "query"
 
 
-def test_error_recovery_injects_zero_move() -> None:
-    config = SftDatasetConfig(seed=2, n_tasks=30, error_recovery_rate=1.0)
-    examples = build_dataset(config)
-    recovered = [ex for ex in examples if ex.meta.has_error_recovery]
-    assert recovered
-    payload = _parse_assistant_content(recovered[0].messages[2].content)
-    actions = payload["actions"]
-    zero_moves = [
-        a
-        for i, a in enumerate(actions)
-        if a.get("kind") == "move"
-        and a.get("offset") == [0.0, 0.0, 0.0]
-        and i + 1 < len(actions)
-        and actions[i + 1].get("kind") == "move"
-    ]
-    assert zero_moves
+def test_one_shot_error_recovery_is_rejected() -> None:
+    with pytest.raises(ValueError, match="intervening tool observations"):
+        SftDatasetConfig(seed=2, n_tasks=30, error_recovery_rate=1.0)
 
 
 def test_export_and_reload_jsonl(tmp_path: Path) -> None:
@@ -104,3 +92,13 @@ def test_build_sft_example_from_run_task() -> None:
     example = build_sft_example(task, actions)
     _assert_example_shape(example)
     assert task.instruction in example.messages[1].content
+
+
+def test_examples_embed_information_complete_task_context() -> None:
+    example = build_dataset(SftDatasetConfig(seed=8, n_tasks=5))[0]
+    assert CONTEXT_SCHEMA in example.messages[1].content
+    assert '"goals"' in example.messages[1].content
+    assert '"bbox"' in example.messages[1].content
+    assert example.meta.task_spec is not None
+    assert example.meta.task_fingerprint
+    assert example.meta.structural_fingerprint

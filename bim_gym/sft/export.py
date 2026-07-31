@@ -40,7 +40,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--error-recovery-rate",
         type=float,
-        default=0.05,
+        default=0.0,
         help="Fraction of examples with intentional recovery steps",
     )
     args = parser.parse_args(argv)

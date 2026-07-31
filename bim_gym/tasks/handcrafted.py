@@ -87,6 +87,12 @@ OPENING_SHIFT_ALONG_WALL = TaskSpec(
         "door_wall": RoomBoxWall.South,
     },
     goals=[
+        PredicateSpec(
+            kind=PredicateKind.HostOffsetInRange,
+            a="opening-wall-s",
+            lo=2125.0,
+            hi=2175.0,
+        ),
         PredicateSpec(kind=PredicateKind.HostedBy, a="opening-wall-s", b="wall-s"),
     ],
 )

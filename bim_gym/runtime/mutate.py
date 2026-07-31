@@ -82,6 +82,19 @@ def move_opening(
     else:
         new_offset = geom.host_offset + host_offset_delta  # type: ignore[operator]
 
+    host = scene.get(entity.properties.Hosting.host_id)
+    if not isinstance(host, WallEntity):
+        raise ValueError(f"opening {opening_id} host is not a wall")
+    centerline = host.properties.WallGeometry.centerline
+    host_length = sum(
+        ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5
+        for (x0, y0), (x1, y1) in zip(centerline, centerline[1:])
+    )
+    if not 0.0 <= new_offset <= host_length - geom.width:
+        raise ValueError(
+            f"opening host_offset {new_offset} outside [0, {host_length - geom.width}]"
+        )
+
     new_geom = geom.model_copy(update={"host_offset": new_offset})
     new_props = entity.properties.model_copy(update={"OpeningGeometry": new_geom})
     updated = entity.model_copy(update={"properties": new_props})

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from bim_gym.generators import TaskGeneratorConfig, generate
 from bim_gym.tasks import evaluate_task, run_task
+from bim_gym.generators.enums import TaskFamilyKind
 
 
 def _assert_solvable(task) -> None:
@@ -34,3 +35,33 @@ def test_generate_deterministic() -> None:
     assert [g.model_dump() for g in first[0].goals] == [
         g.model_dump() for g in second[0].goals
     ]
+
+
+def test_boolean_qa_is_balanced_and_executable() -> None:
+    tasks = generate(TaskGeneratorConfig(
+        seed=12,
+        n_tasks=40,
+        families=(TaskFamilyKind.HostingQA, TaskFamilyKind.AlignmentQA),
+    ))
+    outcomes = [task.goals[0].expected for task in tasks]
+    assert outcomes.count(True) == outcomes.count(False)
+    assert all(evaluate_task(task).success for task in tasks)
+
+
+def test_generated_target_ids_are_not_fixed_shortcuts() -> None:
+    tasks = generate(TaskGeneratorConfig(seed=4, n_tasks=50))
+    target_ids = {task.goals[0].a for task in tasks}
+    assert len(target_ids) > 40
+
+
+def test_clearance_distractor_ids_are_renamed() -> None:
+    tasks = generate(TaskGeneratorConfig(
+        seed=0,
+        n_tasks=8,
+        families=(TaskFamilyKind.Clearance,),
+    ))
+    for task in tasks:
+        entity_ids = set(task.scene["entities"])
+        assert "column-1" not in entity_ids
+        assert "column-2" not in entity_ids
+        assert any(eid.endswith("-x") for eid in entity_ids)

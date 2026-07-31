@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import random
 from typing import Any
 
 from bim_gym.contract.enums import EntityType
@@ -13,6 +12,15 @@ from bim_gym.generators.enums import TaskFamilyKind
 from bim_gym.runtime.episode import Episode
 from bim_gym.sft.enums import AssistantContentFormat, SftMessageRole
 from bim_gym.sft.models import SftDatasetConfig, SftExample, SftMessage, SftMeta
+from bim_gym.sft.context import (
+    GENERATOR_VERSION,
+    canonical_json,
+    difficulty_for,
+    structural_fingerprint,
+    task_context,
+    task_fingerprint,
+    task_to_jsonable,
+)
 from bim_gym.tasks.runner import build_scene, run_task
 from bim_gym.tasks.spec import TaskSpec
 
@@ -21,7 +29,9 @@ _SYSTEM_PROMPT = """You are a BIM spatial reasoning agent. Respond with a JSON o
 Available action kinds: query, note, recall, move, place, assert, noop.
 Query ops: list, get, children, openings_on, measure_distance, bbox, summary.
 Mutations: move (offset or host_offset), place (position).
-Finish with assert using task goal predicates when verifying or after edits."""
+The user message includes a canonical scene snapshot and formal goals. Predicate
+field expected=false means the underlying relation must be false. Finish with
+assert using the task goal predicates when verifying or after edits."""
 
 _ASSISTANT_FORMAT = AssistantContentFormat.BimGymActionsV1
 
@@ -33,20 +43,15 @@ def _infer_family(task: TaskSpec) -> TaskFamilyKind | None:
         return TaskFamilyKind.Clearance
     if task.id.startswith("gen_spacing"):
         return TaskFamilyKind.Spacing
+    if task.id.startswith("gen_opening_shift"):
+        return TaskFamilyKind.OpeningShift
+    if task.id.startswith("gen_alignment_qa"):
+        return TaskFamilyKind.AlignmentQA
     return None
 
 
 def _scene_summary_text(task: TaskSpec) -> str:
-    scene = build_scene(task)
-    summary = scene.summary()
-    counts = summary.get("entity_counts", {})
-    count_parts = ", ".join(f"{count} {name}" for name, count in sorted(counts.items()))
-    roots = summary.get("roots", [])
-    root_text = ", ".join(roots) if roots else "none"
-    return (
-        f"Scene: {summary.get('n_entities', 0)} entities "
-        f"({count_parts}). Roots: {root_text}."
-    )
+    return "Task context (canonical JSON):\n" + canonical_json(task_context(task))
 
 
 def _user_content(task: TaskSpec) -> str:
@@ -80,10 +85,11 @@ def _query_prefix_for_task(task: TaskSpec) -> list[Action]:
         return prefix
 
     if family is TaskFamilyKind.Clearance:
+        target_ids = sorted({goal.a for goal in task.goals})
         return [
             query(QueryOp.Summary),
             query(QueryOp.List, entity_type=EntityType.Column.value, parent="storey-1"),
-            query(QueryOp.Get, entity_id="column-1"),
+            *(query(QueryOp.Get, entity_id=entity_id) for entity_id in target_ids),
         ]
 
     if family is TaskFamilyKind.Spacing:
@@ -96,30 +102,15 @@ def _query_prefix_for_task(task: TaskSpec) -> list[Action]:
                 prefix.append(query(QueryOp.MeasureDistance, a=goal.a, b=goal.b))
         return prefix
 
+    if family is TaskFamilyKind.OpeningShift:
+        prefix = [query(QueryOp.Summary)]
+        for goal in task.goals:
+            if goal.kind == PredicateKind.HostedBy and goal.b:
+                prefix.append(query(QueryOp.OpeningsOn, entity_id=goal.b))
+                prefix.append(query(QueryOp.Get, entity_id=goal.a))
+        return prefix
+
     return [query(QueryOp.Summary)]
-
-
-def _invalid_recovery_action(action: Action) -> Action | None:
-    if action.kind == ActionKind.Move and action.entity_id:
-        return Action(
-            kind=ActionKind.Move,
-            entity_id=action.entity_id,
-            offset=(0.0, 0.0, 0.0),
-        )
-    return None
-
-
-def _inject_error_recovery(rng: random.Random, actions: list[Action]) -> list[Action]:
-    move_indices = [i for i, action in enumerate(actions) if action.kind == ActionKind.Move]
-    if not move_indices:
-        return actions
-
-    index = rng.choice(move_indices)
-    invalid = _invalid_recovery_action(actions[index])
-    if invalid is None:
-        return actions
-
-    return actions[:index] + [invalid, actions[index]] + actions[index + 1 :]
 
 
 def _actions_from_episode_or_list(
@@ -135,6 +126,7 @@ def build_sft_example(
     episode_or_actions: Episode | list[Action],
     *,
     has_error_recovery: bool = False,
+    scene_seed: int | None = None,
 ) -> SftExample:
     actions = _actions_from_episode_or_list(episode_or_actions)
     messages = [
@@ -152,6 +144,12 @@ def build_sft_example(
             task_id=task.id,
             family=_infer_family(task),
             has_error_recovery=has_error_recovery,
+            generator_version=GENERATOR_VERSION,
+            scene_seed=scene_seed,
+            task_spec=task_to_jsonable(task),
+            task_fingerprint=task_fingerprint(task),
+            structural_fingerprint=structural_fingerprint(task),
+            difficulty=difficulty_for(task),
         ),
     )
 
@@ -159,21 +157,13 @@ def build_sft_example(
 def _prepare_actions(
     task: TaskSpec,
     config: SftDatasetConfig,
-    rng: random.Random,
 ) -> tuple[list[Action], bool]:
     actions = _resolve_base_actions(task)
     if config.include_query_prefix:
         prefix = _query_prefix_for_task(task)
         actions = prefix + actions
 
-    has_recovery = False
-    if config.error_recovery_rate > 0.0 and rng.random() < config.error_recovery_rate:
-        augmented = _inject_error_recovery(rng, actions)
-        if augmented != actions:
-            actions = augmented
-            has_recovery = True
-
-    return actions, has_recovery
+    return actions, False
 
 
 def _verify_actions(task: TaskSpec, actions: list[Action]) -> None:
@@ -191,16 +181,20 @@ def _verify_actions(task: TaskSpec, actions: list[Action]) -> None:
 
 
 def build_dataset(config: SftDatasetConfig) -> list[SftExample]:
-    rng = random.Random(config.seed)
     gen_config = TaskGeneratorConfig(seed=config.seed, n_tasks=config.n_tasks)
     tasks = generate(gen_config)
     examples: list[SftExample] = []
 
     for task in tasks:
-        actions, has_recovery = _prepare_actions(task, config, rng)
+        actions, has_recovery = _prepare_actions(task, config)
         _verify_actions(task, actions)
         examples.append(
-            build_sft_example(task, actions, has_error_recovery=has_recovery)
+            build_sft_example(
+                task,
+                actions,
+                has_error_recovery=has_recovery,
+                scene_seed=config.seed,
+            )
         )
 
     return examples

@@ -17,6 +17,7 @@ class PredicateSpec(BaseModel):
     hi: float | None = None
     margin: float | None = None
     tol: float | None = None
+    expected: bool = True
 
 
 class Action(BaseModel):
@@ -60,9 +61,18 @@ def noop() -> Action:
 
 def move(
     entity_id: str,
-    offset: tuple[float, float, float],
+    offset: tuple[float, float, float] | None = None,
+    *,
+    host_offset: float | None = None,
+    host_offset_delta: float | None = None,
 ) -> Action:
-    return Action(kind=ActionKind.Move, entity_id=entity_id, offset=offset)
+    return Action(
+        kind=ActionKind.Move,
+        entity_id=entity_id,
+        offset=offset,
+        host_offset=host_offset,
+        host_offset_delta=host_offset_delta,
+    )
 
 
 def place(entity_id: str, position: tuple[float, float, float]) -> Action:

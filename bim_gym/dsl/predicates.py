@@ -8,6 +8,7 @@ from bim_gym.runtime.predicates import (
     aligned_with,
     clear_of,
     distance_in_range,
+    host_offset_in_range,
     hosted_by,
     inside,
 )
@@ -15,6 +16,13 @@ from bim_gym.runtime.scene import Scene
 
 
 def evaluate_spec(scene: Scene, spec: PredicateSpec) -> PredicateResult:
+    result = _evaluate_positive(scene, spec)
+    if spec.expected:
+        return result
+    return PredicateResult(ok=not result.ok, score=1.0 - result.score)
+
+
+def _evaluate_positive(scene: Scene, spec: PredicateSpec) -> PredicateResult:
     match spec.kind:
         case PredicateKind.HostedBy:
             if spec.b is None:
@@ -55,3 +63,10 @@ def evaluate_spec(scene: Scene, spec: PredicateSpec) -> PredicateResult:
             if spec.tol is not None:
                 kwargs["tol"] = spec.tol
             return distance_in_range(scene, spec.a, spec.b, spec.lo, spec.hi, **kwargs)
+        case PredicateKind.HostOffsetInRange:
+            if spec.lo is None or spec.hi is None:
+                raise ValueError("host_offset_in_range requires lo, hi")
+            kwargs = {}
+            if spec.tol is not None:
+                kwargs["tol"] = spec.tol
+            return host_offset_in_range(scene, spec.a, spec.lo, spec.hi, **kwargs)

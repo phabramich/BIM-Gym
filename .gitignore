@@ -1,12 +1,42 @@
-node_modules/
-dist/
-.DS_Store
-.env
-.venv/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+*.egg-info/
+*.egg
+build/
+dist/
+.eggs/
+
+# Tests / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.cache/
+
+# Tooling
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# IDE / OS
 .idea/
 .vscode/
+.DS_Store
+
+# Env / secrets
+.env
+.env.*
+
+# Project
+node_modules/
 *.log
 data/
 *.jsonl

@@ -34,6 +34,7 @@ __all__ = [
     "distance_in_range",
     "evaluate",
     "hosted_by",
+    "host_offset_in_range",
     "inside",
     "inside_bbox",
 ]
@@ -169,6 +170,27 @@ def inside(
     box = _require_bbox(scene, container_id)
     point = bbox_center(_require_bbox(scene, entity_id))
     return inside_bbox(point, box, margin)
+
+
+def host_offset_in_range(
+    scene: Scene,
+    opening_id: EntityId,
+    lo: float,
+    hi: float,
+    tol: float = DISTANCE_TOLERANCE_MM,
+) -> PredicateResult:
+    entity = scene.get(opening_id)
+    if not isinstance(entity, OpeningEntity):
+        return PredicateResult(ok=False, score=0.0)
+    value = entity.properties.OpeningGeometry.host_offset
+    ok = lo - tol <= value <= hi + tol
+    if ok:
+        return PredicateResult(ok=True, score=1.0)
+    if value < lo:
+        score = clamp01(1.0 - (lo - value) / max(abs(lo) + 1.0, 1.0))
+    else:
+        score = clamp01(1.0 - (value - hi) / max(abs(hi) + 1.0, 1.0))
+    return PredicateResult(ok=False, score=score)
 
 
 def aligned_with(

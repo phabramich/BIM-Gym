@@ -7,3 +7,5 @@ class TaskFamilyKind(str, Enum):
     HostingQA = "hosting_qa"
     Clearance = "clearance"
     Spacing = "spacing"
+    OpeningShift = "opening_shift"
+    AlignmentQA = "alignment_qa"
