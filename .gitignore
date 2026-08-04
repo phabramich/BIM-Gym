@@ -5,6 +5,7 @@ __pycache__/
 *.so
 .Python
 .venv/
+.venv-rocm/
 venv/
 *.egg-info/
 *.egg
@@ -39,4 +40,6 @@ htmlcov/
 node_modules/
 *.log
 data/
+out/
 *.jsonl
+unsloth_compiled_cache/
